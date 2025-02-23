@@ -19,7 +19,11 @@ let factInfo = {
   "raidUrl": "https://media.arona.ai/data/v3/raid/<id>/total",
   "eraidUrl": "https://media.arona.ai/data/v3/eraid/<id>/total",
   "raidInfo": "https://schaledb.com/data/tw/raids.json",
-  "studentUrl": "https://schaledb.com/data/tw/students.json"
+  "studentUrl": "https://schaledb.com/data/tw/students.json",
+  "enRaidInfo": "https://schaledb.com/data/en/raids.json",
+  "enStudentUrl": "https://schaledb.com/data/en/students.json",
+  "krRaidInfo": "https://schaledb.com/data/kr/raids.json",
+  "krStudentUrl": "https://schaledb.com/data/kr/students.json"
 }
 
 window.downloadInfo = async function (inJson) {
@@ -126,7 +130,7 @@ window.downloadInfo = async function (inJson) {
           }
           
           if(!rankMap[rankRange].hasOwnProperty(stdId)) {
-            rankMap[rankRange][stdId] = {"id": stdId, "stdNm": stdNm, "max": -1, "isLimited": isLimited, "cnt": 0};
+            rankMap[rankRange][stdId] = {"id": stdId, "stdNm": stdNm, "max": 0, "isLimited": isLimited, "cnt": 0};
           }
           
           let useCnt = currRaidInfo.characterUsage.r[rankRange][stdId].reduce((a, c) => a + c, 0);
@@ -182,7 +186,7 @@ window.downloadInfo = async function (inJson) {
             }
             
             if(!rankMap[rankRange].hasOwnProperty(stdId)) {
-              rankMap[rankRange][stdId] = {"id": stdId, "stdNm": stdNm, "max": -1, "isLimited": isLimited, "cnt": 0};
+              rankMap[rankRange][stdId] = {"id": stdId, "stdNm": stdNm, "max": 0, "isLimited": isLimited, "cnt": 0};
             }
             
             let useCnt = currEraidInfo.characterUsage[battleType].r[rankRange][stdId].reduce((a, c) => a + c, 0);
