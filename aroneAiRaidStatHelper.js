@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         Arona AI Raid Stat. Helper
-// @version      v0.1
+// @version      v0.2
 // @description  Geather student usage in different raids
 // @author       Jacky Ho
 // @match        https://arona.ai/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=arona.ai
 // @require      https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.core.min.js
+// @downloadURL  https://github.com/jacky1226-csl/Arona-AI-Raid-Stat.-Helper/raw/refs/heads/main/aroneAiRaidStatHelper.js
+// @updateURL    https://github.com/jacky1226-csl/Arona-AI-Raid-Stat.-Helper/raw/refs/heads/main/aroneAiRaidStatHelper.js
 // @grant        none
 // ==/UserScript==
 
@@ -21,10 +23,6 @@ let factInfo = {
 }
 
 window.downloadInfo = async function (inJson) {
-  //let scriptTag = document.getElementById('__NEXT_DATA__');
-  //let nextData = JSON.parse(scriptTag.textContent);
-  //console.log("Build Number:", nextData.buildId);
-  
   if(inJson && inJson.hasOwnProperty("currRaidId")){
     currExpRiadId = inJson.currRaidId;
   }
@@ -302,25 +300,6 @@ window.downloadInfo = async function (inJson) {
       dataArray.push(rowObj);
     });
     
-    //console.log(dataArray);
-    //console.log(stdHeaderArray);
-    
-    //raidArrayByDate.forEach(raidName => {
-    //  if(studentMap[stdId].hasOwnProperty(raidName)) {
-    //    dataArray.push({"1": raidName});
-    //    dataArray.push({"1":"排名", "2":"借用", "3":"三星以下", "4":"四星", "5":"五星無武", "6":"專一", "7":"專二", "8":"專三", "9":"共計"});
-    //    
-    //    factInfo.summaryRank.forEach(rank => {
-    //      if(studentMap[stdId][raidName].hasOwnProperty(rank)) {
-    //        let useArr = studentMap[stdId][raidName][rank];
-    //        dataArray.push({"1":rank + "以下", "2":useArr[0], "3":useArr[1], "4":useArr[2], "5":useArr[3], "6":useArr[4], "7":useArr[5], "8":useArr[6], "9":useArr.reduce((a, c) => a + c, 0)});
-    //      } else {
-    //        dataArray.push({"1":rank + "以下", "2":0, "3":0, "4":0, "5":0, "6":0, "7":0, "8":0, "9":0});
-    //      }
-    //    });
-    //    dataArray.push({});
-    //  }
-    //});
     let worksheet = XLSX.utils.json_to_sheet(dataArray, {header: stdHeaderArray, skipHeader:true});
     XLSX.utils.book_append_sheet(resultWorkbook, worksheet, formatSheetName(stdId + "-" + stdInfo[stdId].Name));
   });
