@@ -88,7 +88,7 @@ It is now 23 Feb 2025 and Ui (Swimsuit) will be appears in limited pull next wee
 
 Let's focus on ranking 10k to 20k first.
 
-來先看看一萬名刓二萬名的數據吧
+來先看看一萬名到二萬名的數據吧
 
 For 10k to 20k
 
@@ -105,7 +105,7 @@ Let me check on detail usages.
 來看看詳細數據吧。
 
 | Raid | 借用 | 三星 | 四星 | 五星 | 專一 | 專二 | 專三 | 共計 |
-|---|---|---|---|---|---|
+|---|---|---|---|---|---|---|---|---|
 | 白&黑 室內 總力 | 0 | 32 | 6 | 0 | 11 | 1 | 0 | 50 |
 | 彈力 佩洛洛吉拉 野外 大決戰 | 0 | 19 | 6 | 0 | 10 | 1 | 0 | 36 |
 | 神秘 佩洛洛吉拉 野外 大決戰 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
