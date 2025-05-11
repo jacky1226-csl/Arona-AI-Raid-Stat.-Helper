@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Arona AI Raid Stat. Helper
-// @version      v0.2
+// @version      v0.3
 // @description  Geather student usage in different raids
 // @author       Jacky Ho
 // @match        https://arona.ai/*
@@ -50,8 +50,10 @@ window.downloadInfo = async function (inJson) {
   }
   
   let currTwRaid = raidInfo.RaidSeasons[1].Seasons.at(-1);
+  let scdCurrTwRaid = raidInfo.RaidSeasons[1].Seasons.at(-2); // adding this as JP raid 77 and 71 having same boss in same loc and is in half year
   if(currTwRaid.End > (new Date()) / 1000){
     currTwRaid = raidInfo.RaidSeasons[1].Seasons.at(-2);
+    scdCurrTwRaid = raidInfo.RaidSeasons[1].Seasons.at(-3);
   }
   let jpRaids = raidInfo.RaidSeasons[0].Seasons;
   let refJpRaid = jpRaids.length;
@@ -69,7 +71,7 @@ window.downloadInfo = async function (inJson) {
   let eraidMap = {};
 
   refJpRaid--;
-   while(!isSameRaid(jpRaids[refJpRaid], currTwRaid)){
+  while(!(isSameRaid(jpRaids[refJpRaid], currTwRaid) && isSameRaid(jpRaids[refJpRaid - 1], scdCurrTwRaid))){ // adding compare the second last raid
     let currRaid = jpRaids[refJpRaid];
     raidMap[currRaid.SeasonDisplay] = {
       "name": raidInfo.Raid[currRaid.RaidId - 1].Name + " " + translateTerm(currRaid.Terrain)
