@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Arona AI Raid Stat. Helper
-// @version      v0.3
+// @version      v0.4
 // @description  Geather student usage in different raids
 // @author       Jacky Ho
 // @match        https://arona.ai/*
@@ -14,10 +14,10 @@
 (function() {
   'use strict';
 
-let factInfo = {
-  "summaryRank": ["1000", "5000", "10000", "20000"],
+let facts = {
+  "summaryRank": ["1000", "5000", "10000", "20000"], // rank should exists in raid info
   "raidUrl": "https://media.arona.ai/data/v3/raid/<id>/total",
-  "eraidUrl": "https://media.arona.ai/data/v3/eraid/<id>/total",
+  "elimRaidUrl": "https://media.arona.ai/data/v3/eraid/<id>/total",
   "raidInfo": "https://schaledb.com/data/tw/raids.json",
   "studentUrl": "https://schaledb.com/data/tw/students.json",
   "enRaidInfo": "https://schaledb.com/data/en/raids.json",
@@ -26,290 +26,223 @@ let factInfo = {
   "krStudentUrl": "https://schaledb.com/data/kr/students.json"
 }
 
-window.downloadInfo = async function (inJson) {
-  if(inJson && inJson.hasOwnProperty("currRaidId")){
-    currExpRiadId = inJson.currRaidId;
-  }
-  if(inJson && inJson.hasOwnProperty("currEraidId")) {
-    currExpEriadId = inJson.currEraidId;
-  }
-  if(inJson && inJson.hasOwnProperty("maxNoRaid")) {
-    tarNoRaid = inJson.maxNoRaid;
-  }
-  
-  let stdInfo = await getJsonRespond(factInfo.studentUrl);
-  if(stdInfo === null) {
-    console.error("Fail to fetch student info!");
-    return;
-  }
-  
-  let raidInfo = await getJsonRespond(factInfo.raidInfo);
-  if(raidInfo === null) {
-    console.error("Fail to fetch raid info!");
-    return;
-  }
-  
-  let currTwRaid = raidInfo.RaidSeasons[1].Seasons.at(-1);
-  let scdCurrTwRaid = raidInfo.RaidSeasons[1].Seasons.at(-2); // adding this as JP raid 77 and 71 having same boss in same loc and is in half year
-  if(currTwRaid.End > (new Date()) / 1000){
-    currTwRaid = raidInfo.RaidSeasons[1].Seasons.at(-2);
-    scdCurrTwRaid = raidInfo.RaidSeasons[1].Seasons.at(-3);
-  }
-  let jpRaids = raidInfo.RaidSeasons[0].Seasons;
-  let refJpRaid = jpRaids.length;
-  
-  //console.log(currTwRaid);
-  
-  let currTwEraid = raidInfo.RaidSeasons[1].EliminateSeasons.at(-1);
-  if(currTwEraid.End > (new Date()) / 1000){
-    currTwEraid = raidInfo.RaidSeasons[1].EliminateSeasons.at(-2);
-  }
-  let jpEraids = raidInfo.RaidSeasons[0].EliminateSeasons;
-  let refJpEraid = jpEraids.length;
-  
-  let raidMap = {};
-  let eraidMap = {};
+let debugMode = false;
 
-  refJpRaid--;
-  while(!(isSameRaid(jpRaids[refJpRaid], currTwRaid) && isSameRaid(jpRaids[refJpRaid - 1], scdCurrTwRaid))){ // adding compare the second last raid
-    let currRaid = jpRaids[refJpRaid];
-    raidMap[currRaid.SeasonDisplay] = {
-      "name": raidInfo.Raid[currRaid.RaidId - 1].Name + " " + translateTerm(currRaid.Terrain)
-    }
-    refJpRaid--;
-  }
- 
-  refJpEraid--;
-  while(!isSameRaid(jpEraids[refJpEraid], currTwEraid)){
-    let currEraid = jpEraids[refJpEraid];
-    eraidMap[currEraid.SeasonDisplay] = {
-      "name": raidInfo.Raid[currEraid.RaidId - 1].Name + " " + translateTerm(currEraid.Terrain)
-    }
-    refJpEraid--;
-  }
+window.downloadInfo = async function (configJson) {
+  // Steps:
+  // 1. Get all raid info
+  // 2. Determine which JP Raid is not done in Global server yet
+  // 3. Get information of those raids
+  // 4. Summary for the info
+  // 5. Get student info
+  // 5. Generate excel file
   
-  let searchRaid = {};
-  let searchEraid = {};
+  let raidInfo = await getJsonRespond(facts.raidInfo);
+  // RaidSeason got three outputs
+  // [0] is JP server
+  // [1] is global server
+  // [2] is believed to be China server, not sure as I don't have those info
+  // Seasons refer to 總力戰
+  // EliminateSeasons refers to 大決戰
   
-  let raidIds = Object.keys(raidMap);
-  for(let i = 0; i < raidIds.length; i++){
-    let raidId = raidIds[i];
-    console.log("Getting raid info for", raidId, raidMap[raidId].name);
-    let retrievedInfo = await getJsonRespond(factInfo.raidUrl.replace(/<id>/g, raidId));
-    if(retrievedInfo !== null) {
-      searchRaid[raidId] = retrievedInfo;
-    }
-  }
+  let baseStudentInfo = await getJsonRespond(facts.studentUrl);
   
-  let eraidIds = Object.keys(eraidMap);
-  for(let i = 0; i < eraidIds.length; i++){
-    let eraidId = eraidIds[i];
-    console.log("Getting eraid info for", eraidId, eraidMap[eraidId].name);
-    let retrievedInfo = await getJsonRespond(factInfo.eraidUrl.replace(/<id>/g, eraidId));
-    if(retrievedInfo !== null) {
-      searchEraid[eraidId] = retrievedInfo;
+  let currTime = (new Date()) / 1000; // timestamp in received objs are in s
+  
+  let gloRaidSessons = raidInfo.RaidSeasons[1].Seasons;
+  let jpRaidSessons = raidInfo.RaidSeasons[0].Seasons;
+  let gloElimRaidSessons = raidInfo.RaidSeasons[1].EliminateSeasons;
+  let jpElimRaidSessons = raidInfo.RaidSeasons[0].EliminateSeasons;
+  
+  // as result should still include on-going raid, so check endtime is smaller current time
+  let currGloRaidId = -1;
+  for(let i = gloRaidSessons.length - 1; i >= 0 && currGloRaidId === -1; i--) {
+    if(gloRaidSessons[i].End < currTime) {
+      currGloRaidId = i;
     }
   }
   
-  let studentMap = {};
-  let rankMap = {};
-  let timeMap = {};
-
-  Object.keys(searchRaid).forEach(noRaid => {
-    let currRaidInfo = searchRaid[noRaid];
-    let raidName = raidMap[noRaid].name + " 總力";
-    timeMap[currRaidInfo.trophyCutByTime.id[0]] = raidName;
-    
-    Object.keys(currRaidInfo.characterUsage.r).forEach(rankRange => {
-      Object.keys(currRaidInfo.characterUsage.r[rankRange]).forEach(stdId => {
-        let stdNm = stdInfo[stdId].Name;
-        let isLimited = stdInfo[stdId].IsLimited;
-        
-        if(factInfo.summaryRank.includes(rankRange)) {
-          let rankIndex = factInfo.summaryRank.findIndex(val => val === rankRange);
-          if(!rankMap.hasOwnProperty(rankRange)) {
-            rankMap[rankRange] = {};
-          }
-          
-          if(!rankMap[rankRange].hasOwnProperty(stdId)) {
-            rankMap[rankRange][stdId] = {"id": stdId, "stdNm": stdNm, "max": 0, "isLimited": isLimited, "cnt": 0};
-          }
-          
-          let useCnt = currRaidInfo.characterUsage.r[rankRange][stdId].reduce((a, c) => a + c, 0);
-          if(rankIndex !== 0) {
-            let prevRank = factInfo.summaryRank[rankIndex - 1];
-            if(currRaidInfo.characterUsage.r[prevRank].hasOwnProperty(stdId)){
-              useCnt -= currRaidInfo.characterUsage.r[prevRank][stdId].reduce((a, c) => a + c, 0);
-            }
-          }
-          
-          if(useCnt > 0) {
-            rankMap[rankRange][stdId][raidName] = useCnt;
-            rankMap[rankRange][stdId].max = Math.max(rankMap[rankRange][stdId].max, useCnt);
-            rankMap[rankRange][stdId].cnt++;
-          }
-        }
-        
-        
-        if(!studentMap.hasOwnProperty(stdId)) {
-          studentMap[stdId] = {};
-        }
-        
-        if(!studentMap[stdId].hasOwnProperty(raidName)) {
-          studentMap[stdId][raidName] = {};
-        }
-        
-        studentMap[stdId][raidName][rankRange] = currRaidInfo.characterUsage.r[rankRange][stdId];
-      });
-    });
+  let currGloEimRaidId = -1;
+  for(let i = gloElimRaidSessons.length - 1; i >= 0 && currGloEimRaidId === -1; i--) {
+    if(gloElimRaidSessons[i].End < currTime) {
+      currGloEimRaidId = i;
+    }
+  }
+  
+  // find the JP raids that are not happens yet
+  // check for "current" and "previous" to make sure, as raid boss may repeat twice in half year
+  // form a list of raids that information required
+  let raidsToInclude = [];
+  let stopFlag = false;
+  for(let i = jpRaidSessons.length - 1; i >=0 && !stopFlag; i--){
+    if(isSameRaid(jpRaidSessons[i], gloRaidSessons[currGloRaidId]) && i > 0
+        && isSameRaid(jpRaidSessons[i - 1], gloRaidSessons[currGloRaidId - 1])) {
+      stopFlag = true;
+    } else {
+      raidsToInclude.push(jpRaidSessons[i]);
+    }
+  }
+  
+  stopFlag = false;
+  for(let i = jpElimRaidSessons.length - 1; i >=0 && !stopFlag; i--){
+    if(isSameRaid(jpElimRaidSessons[i], gloElimRaidSessons[currGloEimRaidId]) && i > 0
+        && isSameRaid(jpElimRaidSessons[i - 1], gloElimRaidSessons[currGloEimRaidId - 1])) {
+      stopFlag = true;
+    } else {
+      raidsToInclude.push(jpElimRaidSessons[i]);
+    }
+  }
+  
+  raidsToInclude = raidsToInclude.sort((a, b) => {
+    return a.Start - b.Start;
   });
   
-  
-  Object.keys(searchEraid).forEach(noEraid => {
-    let currEraidInfo = searchEraid[noEraid];
-    let eraidTime = currEraidInfo.trophyCutByTime.id[0];
+  let studentInfo = {};
+  let displayRaidOrder = [];
+  let displayRaidName = [];
+  // get info for each raid
+  for(let i = 0; i < raidsToInclude.length; i++) {
+    let raid = raidsToInclude[i];
+    raid.hasInfo = false;
     
-    Object.keys(currEraidInfo.characterUsage).forEach(battleType => {
-      let lastUnderIndex = battleType.lastIndexOf("_");
-      let eraidName = translateTerm(battleType.substring(lastUnderIndex + 1)) + " " + eraidMap[noEraid].name + " 大決戰";
-      //let eraidName = "Eraid " + noEraid + " - " + battleType.substring(lastUnderIndex + 1);
-      timeMap[eraidTime + eraidName] = eraidName;
+    let reqUrl = "";
+    if(raid.hasOwnProperty("OpenDifficulty")) { // attribute only available for elim raid
+      reqUrl = facts.elimRaidUrl.replace(/<id>/g, raid.SeasonDisplay);
+    } else {
+      reqUrl = facts.raidUrl.replace(/<id>/g, raid.SeasonDisplay);
+    }
+    
+    console.log("Getting raid info from ", reqUrl);
+    let raidResultInfo = await getJsonRespond(reqUrl);
+    
+    if(raidResultInfo) {
+      // raidResultInfo will be null if got issue when get raid info
+      raid.hasInfo = true;
       
-      Object.keys(currEraidInfo.characterUsage[battleType].r).forEach(rankRange => {
-        Object.keys(currEraidInfo.characterUsage[battleType].r[rankRange]).forEach(stdId => {
-          let stdNm = stdInfo[stdId].Name;
-          let isLimited = stdInfo[stdId].IsLimited;
-          
-          if(factInfo.summaryRank.includes(rankRange)) {
-            let rankIndex = factInfo.summaryRank.findIndex(val => val === rankRange);
-            
-            if(!rankMap.hasOwnProperty(rankRange)) {
-              rankMap[rankRange] = {};
-            }
-            
-            if(!rankMap[rankRange].hasOwnProperty(stdId)) {
-              rankMap[rankRange][stdId] = {"id": stdId, "stdNm": stdNm, "max": 0, "isLimited": isLimited, "cnt": 0};
-            }
-            
-            let useCnt = currEraidInfo.characterUsage[battleType].r[rankRange][stdId].reduce((a, c) => a + c, 0);
-            if(rankIndex !== 0){
-              let prevRank = factInfo.summaryRank[rankIndex - 1];
-              if(currEraidInfo.characterUsage[battleType].r[prevRank].hasOwnProperty(stdId)) {
-                useCnt -= currEraidInfo.characterUsage[battleType].r[prevRank][stdId].reduce((a, c) => a + c, 0);
-              }
-            }
-            
-            if(useCnt > 0) {
-              rankMap[rankRange][stdId][eraidName] = useCnt;
-              rankMap[rankRange][stdId].max = Math.max(rankMap[rankRange][stdId].max, useCnt);
-              rankMap[rankRange][stdId].cnt++;
-            }
+      if(raid.hasOwnProperty("OpenDifficulty")) {
+        Object.keys(raidResultInfo.characterUsage).forEach(elimRaidName => {
+          if(!raid.hasOwnProperty("armors")) {
+            raid.armors = [];
           }
-        
-          if(!studentMap.hasOwnProperty(stdId)) {
-            studentMap[stdId] = {};
-          }
-          
-          if(!studentMap[stdId].hasOwnProperty(eraidName)) {
-            studentMap[stdId][eraidName] = {};
-          }
-          
-          studentMap[stdId][eraidName][rankRange] = currEraidInfo.characterUsage[battleType].r[rankRange][stdId];
+          let armor = elimRaidName.split("_").at(-1);
+          raid.armors.push(armor);
+          let raidName = "e" + raid.SeasonDisplay + "_" + armor;
+          setStudentInfo(studentInfo, raidName, raidResultInfo.characterUsage[elimRaidName].r, baseStudentInfo);
+          displayRaidOrder.push(raidName);
+        displayRaidName.push(translateTerm(armor) + " " + raidInfo.Raid[raid.RaidId - 1].Name + " " + translateTerm(raid.Terrain) + " 大決戰");
         });
-      });
-    });
-  });
+      } else {
+        let raidName = "r" + raid.SeasonDisplay;
+        setStudentInfo(studentInfo, raidName, raidResultInfo.characterUsage.r, baseStudentInfo);
+        displayRaidOrder.push(raidName);
+        displayRaidName.push(raidInfo.Raid[raid.RaidId - 1].Name + " " + translateTerm(raid.Terrain) + " 總力");
+      }
+    }
+  }
   
-  //console.log(studentMap);
-  //console.log(rankMap);
-  
+  // format excel sheets
+  console.log("Start generating excel...");
   let resultWorkbook = XLSX.utils.book_new();
+  let summarySheetHeaderCode = ["stdId", "name", "cnt", "hundPerUpCnt", "fiftyPerUpCnt", "fivePerUpCnt", "max"];
+  let summarySheetHeader = {
+    "stdId": "學生ID",
+    "name": "名稱",
+    "cnt": "cnt",
+    "hundPerUpCnt": ">100%",
+    "fiftyPerUpCnt": ">50%",
+    "fivePerUpCnt": ">5%",
+    "max": "max"
+  }
   
-  let headerArray = ["id", "stdNm", "isLimited", "cnt", "max"];
-  let raidArrayByDate = [];
-  Object.keys(timeMap).sort().forEach(t => {
-    headerArray.push(timeMap[t]);
-    raidArrayByDate.push(timeMap[t]);
-  });
+  for(let i = 0; i < displayRaidOrder.length; i++) {
+    summarySheetHeaderCode.push(displayRaidOrder[i]);
+    summarySheetHeader[displayRaidOrder[i]] = displayRaidName[i];
+  }
   
-  //console.log(timeMap);
-  //console.log(headerArray);
-  
-  Object.keys(rankMap).forEach((rankRange, i, rankList) => {
-    let dataArray = [];
-    Object.keys(rankMap[rankRange]).forEach(stdId => {
-      dataArray.push(rankMap[rankRange][stdId]);
+  // prepare summary sheet
+  for(let i = 0; i < facts.summaryRank.length; i++){
+    let currRank = facts.summaryRank[i];
+    let dataArr = [summarySheetHeader];
+    Object.keys(studentInfo[currRank]).forEach(stdId => {
+      dataArr.push(studentInfo[currRank][stdId]);
     });
-    let worksheet = XLSX.utils.json_to_sheet(sortStudents(dataArray), {header: headerArray});
+    
     let sheetName = "";
     if(i === 0) {
-      sheetName = "Summary - Rank " + rankRange;
+      sheetName = "Summary - Rank " + currRank;
     } else {
-      sheetName = "Summary - Rank " + rankList[i - 1] + " to " + rankRange; 
+      sheetName = "Summary - Rank " + facts.summaryRank[i - 1] + " to " + currRank; 
     }
     
+    let worksheet = XLSX.utils.json_to_sheet(dataArr, {header:summarySheetHeaderCode, skipHeader:true});
     XLSX.utils.book_append_sheet(resultWorkbook, worksheet, formatSheetName(sheetName));
-  });
-
-  let stdHeaderArray = [];
-  factInfo.summaryRank.forEach((rank, i, rankList) => {
-    for(let j = 0;  j < 10; j++){
-      stdHeaderArray.push((10*i + j).toString());
-    }
-  });
+  }
   
-  Object.keys(studentMap).forEach(stdId => {
-    let dataArray = [{}, {}];
+  // use the last summary rank as the total list of student
+  // which is always true as even if 10000 - 20000 got no usage, 1 - 20000 will always get usage hence in list
+  // note that technically this could be done in the previous large loop, but just splitting that to make the code easier to understand and maintain
+  // well, we don't expect there would be many students, hence performance should be still ok... I think?
+  
+  console.log("Summary page done, generating sheets for each student...");
+  let stdSheetHeaderCode = [];
+  let stdSheetHeaderFirst = {};
+  let stdSheetHeaderSecond = {};
+  for(let i = 0; i < facts.summaryRank.length; i++) {
+    for(let j = 0; j < 10; j++){
+      // create number header code, each rank range will got 9 cols plus one separator
+      stdSheetHeaderCode.push((10*i + j).toString());
+    }
+    stdSheetHeaderFirst[(10 * i).toString()] = i === 0 
+        ? (facts.summaryRank[i] + "以下") 
+        : facts.summaryRank[i-1] + " - " + facts.summaryRank[i];
+    stdSheetHeaderSecond[(10 * i).toString()] = "Raid";
+    stdSheetHeaderSecond[(10 * i + 1).toString()] = "借用";
+    stdSheetHeaderSecond[(10 * i + 2).toString()] = "三星";
+    stdSheetHeaderSecond[(10 * i + 3).toString()] = "四星";
+    stdSheetHeaderSecond[(10 * i + 4).toString()] = "五星";
+    stdSheetHeaderSecond[(10 * i + 5).toString()] = "專一";
+    stdSheetHeaderSecond[(10 * i + 6).toString()] = "專二";
+    stdSheetHeaderSecond[(10 * i + 7).toString()] = "專三";
+    stdSheetHeaderSecond[(10 * i + 8).toString()] = "共計";
+    stdSheetHeaderSecond[(10 * i + 9).toString()] = "";    
+  }
+  
+  Object.keys(studentInfo[facts.summaryRank.at(-1)]).forEach(stdId => {
+    // each sheet
+    let sheetInfo = [stdSheetHeaderFirst, stdSheetHeaderSecond];
     
-    factInfo.summaryRank.forEach((rank, i, rankList) => {
-      dataArray[0][(10*i).toString()] =  i === 0 ? (rank + "以下") : rankList[i-1] + " - " + rank;
-      dataArray[1][(10*i).toString()] = "Raid";
-      dataArray[1][(10*i + 1).toString()] = "借用";
-      dataArray[1][(10*i + 2).toString()] = "三星";
-      dataArray[1][(10*i + 3).toString()] = "四星";
-      dataArray[1][(10*i + 4).toString()] = "五星";
-      dataArray[1][(10*i + 5).toString()] = "專一";
-      dataArray[1][(10*i + 6).toString()] = "專二";
-      dataArray[1][(10*i + 7).toString()] = "專三";
-      dataArray[1][(10*i + 8).toString()] = "共計";
-      dataArray[1][(10*i + 9).toString()] = "";
-    });
-    
-    Object.keys(timeMap).sort().forEach(t => {
-      let raidName = timeMap[t];
-      let rowObj = {};
+    displayRaidOrder.forEach((raidId, raidIndex, raidList) => {
+      // each row
+      let rowInfo = {};
       
-      factInfo.summaryRank.forEach((rank, i, rankList) => {
-        rowObj[(10*i).toString()] = raidName;
-        if(studentMap[stdId].hasOwnProperty(raidName) && studentMap[stdId][raidName].hasOwnProperty(rank)) {
-          let currRankObj = studentMap[stdId][raidName][rank];
-          let prevRankObj = (i === 0 ? null : studentMap[stdId][raidName][rankList[i - 1]]);
-          rowObj[(10*i + 1).toString()] = prevRankObj ? currRankObj[0] - prevRankObj[0] : currRankObj[0];
-          rowObj[(10*i + 2).toString()] = prevRankObj ? currRankObj[1] - prevRankObj[1] : currRankObj[1];
-          rowObj[(10*i + 3).toString()] = prevRankObj ? currRankObj[2] - prevRankObj[2] : currRankObj[2];
-          rowObj[(10*i + 4).toString()] = prevRankObj ? currRankObj[3] - prevRankObj[3] : currRankObj[3];
-          rowObj[(10*i + 5).toString()] = prevRankObj ? currRankObj[4] - prevRankObj[4] : currRankObj[4];
-          rowObj[(10*i + 6).toString()] = prevRankObj ? currRankObj[5] - prevRankObj[5] : currRankObj[5];
-          rowObj[(10*i + 7).toString()] = prevRankObj ? currRankObj[6] - prevRankObj[6] : currRankObj[6];
-          rowObj[(10*i + 8).toString()] = currRankObj.reduce((a, c) => a + c, 0) - (prevRankObj ? prevRankObj.reduce((a, c) => a + c, 0) : 0)
+      facts.summaryRank.forEach((rank, rankIndex, rankList) => {
+        // each rank
+        
+        rowInfo[(10*rankIndex).toString()] = displayRaidName[raidIndex];
+        if(!studentInfo[rank].hasOwnProperty(stdId) || !studentInfo[rank][stdId].hasOwnProperty(raidId)){
+          // student is not used in that rank of raid, set all data cell 0
+          for(let j = 1; j < 9; j++){
+            rowInfo[(10 * rankIndex + j).toString()] = 0;
+          }
         } else {
-          rowObj[(10*i + 1).toString()] = 0;
-          rowObj[(10*i + 2).toString()] = 0;
-          rowObj[(10*i + 3).toString()] = 0;
-          rowObj[(10*i + 4).toString()] = 0;
-          rowObj[(10*i + 5).toString()] = 0;
-          rowObj[(10*i + 6).toString()] = 0;
-          rowObj[(10*i + 7).toString()] = 0;
-          rowObj[(10*i + 8).toString()] = 0;
+          rowInfo[(10 * rankIndex + 1).toString()] = studentInfo[rank][stdId][raidId + "_arr"][0];
+          rowInfo[(10 * rankIndex + 2).toString()] = studentInfo[rank][stdId][raidId + "_arr"][1];
+          rowInfo[(10 * rankIndex + 3).toString()] = studentInfo[rank][stdId][raidId + "_arr"][2];
+          rowInfo[(10 * rankIndex + 4).toString()] = studentInfo[rank][stdId][raidId + "_arr"][3];
+          rowInfo[(10 * rankIndex + 5).toString()] = studentInfo[rank][stdId][raidId + "_arr"][4];
+          rowInfo[(10 * rankIndex + 6).toString()] = studentInfo[rank][stdId][raidId + "_arr"][5];
+          rowInfo[(10 * rankIndex + 7).toString()] = studentInfo[rank][stdId][raidId + "_arr"][6];
+          rowInfo[(10 * rankIndex + 8).toString()] = studentInfo[rank][stdId][raidId + "_arr"][7];
         }
       });
-      dataArray.push(rowObj);
+      sheetInfo.push(rowInfo);
     });
     
-    let worksheet = XLSX.utils.json_to_sheet(dataArray, {header: stdHeaderArray, skipHeader:true});
-    XLSX.utils.book_append_sheet(resultWorkbook, worksheet, formatSheetName(stdId + "-" + stdInfo[stdId].Name));
+    let sheetName = stdId + "-" + studentInfo[facts.summaryRank.at(-1)][stdId].name;
+    let worksheet = XLSX.utils.json_to_sheet(sheetInfo, {header:stdSheetHeaderCode, skipHeader:true});
+    XLSX.utils.book_append_sheet(resultWorkbook, worksheet, formatSheetName(sheetName));
   });
-
+  
   let wbout = XLSX.write(resultWorkbook, {bookType: 'xlsx', type: 'array' });
 
   let blob = new Blob([wbout], { type: 'application/octet-stream' });
@@ -321,6 +254,17 @@ window.downloadInfo = async function (inJson) {
   a.click();
 
   URL.revokeObjectURL(url);
+  
+  if(debugMode) {
+    window.gloRaidSessons = gloRaidSessons;
+    window.jpRaidSessons = jpRaidSessons;
+    window.gloElimRaidSessons = gloElimRaidSessons;
+    window.jpElimRaidSessons = jpElimRaidSessons;
+    window.raidsToInclude = raidsToInclude;
+    window.studentInfo = studentInfo;
+    window.displayRaidOrder = displayRaidOrder;
+    window.displayRaidName = displayRaidName;
+  }
 }
 
 async function getJsonRespond(url) {
@@ -337,32 +281,95 @@ async function getJsonRespond(url) {
   }
 }
 
-function sortStudents(arrayStd) {
-  arrayStd.sort((a, b) => {
-    if (b.isLimited - a.isLimited !== 0) {
-      return b.isLimited - a.isLimited;
+function setStudentInfo(studentInfo, raidName, usage, baseStudentInfo) {
+  for(let i = 0; i < facts.summaryRank.length; i++) {
+    let currRank = facts.summaryRank[i];
+    let rankInfo = usage[currRank];
+    let prevRankInfo = {};
+    if(i !== 0) {
+      prevRankInfo = usage[facts.summaryRank[i - 1]];
     }
-
-    return b.id - a.id;
-  });
-  
-  //console.log(arrayStd);
-  return arrayStd;
+    
+    let teamCnt = ( i === 0 ? currRank : currRank - facts.summaryRank[i - 1]);
+    
+    if(!studentInfo.hasOwnProperty(currRank)) {
+      studentInfo[currRank] = {};
+    }
+    
+    Object.keys(rankInfo).forEach(stdId => {
+      if(!studentInfo[currRank].hasOwnProperty(stdId)) {
+        studentInfo[currRank][stdId] = {
+          "stdId": stdId,
+          "name": baseStudentInfo[stdId].Name,
+          "max": 0,
+          "cnt": 0,
+          "hundPerUpCnt": 0,
+          "fiftyPerUpCnt": 0,
+          "fivePerUpCnt": 0
+        };
+      }
+      
+      let sumCnt = 0;
+      let usageArr = [];
+      
+      rankInfo[stdId].forEach((value, index) => {
+        let res = value;
+        if(prevRankInfo.hasOwnProperty(stdId)) {
+            res -= prevRankInfo[stdId][index];
+        }
+        sumCnt += res;
+        usageArr.push(res);
+      });
+      usageArr.push(sumCnt);
+      
+      if(sumCnt > 0) {
+        studentInfo[currRank][stdId].cnt++;
+        studentInfo[currRank][stdId][raidName] = sumCnt;
+      }
+      if(sumCnt > studentInfo[currRank][stdId].max) {
+        studentInfo[currRank][stdId].max = sumCnt;
+      }
+      if(sumCnt > teamCnt) {
+       studentInfo[currRank][stdId].hundPerUpCnt++;
+      }
+      if(sumCnt >= teamCnt * 0.5) {
+        studentInfo[currRank][stdId].fiftyPerUpCnt++;
+      }
+      if(sumCnt >= teamCnt * 0.05) {
+        studentInfo[currRank][stdId].fivePerUpCnt++;
+      }
+      
+      studentInfo[currRank][stdId][raidName + "_arr"] = usageArr;
+    });
+  }
 }
 
 function isSameRaid(a, b) {
+  // compare the boss
   if(a.RaidId !== b.RaidId)
     return false;
   
+  // compare the terrain
   if(a.Terrain !== b.Terrain)
     return false;
   
-  if(a.hasOwnProperty("ArmorTypes")) {
-    // is eraid
-    a.ArmorTypes.forEach(t => {
-      if(!b.ArmorTypes.includes(t))
+  if(a.hasOwnProperty("OpenDifficulty") || b.hasOwnProperty("OpenDifficulty")) {
+    // is elim raid, so also compare armor types
+    if(!a.hasOwnProperty("OpenDifficulty") || !b.hasOwnProperty("OpenDifficulty")) {
+      return false;
+    }
+    let aKeys = Object.keys(a.OpenDifficulty).sort();
+    let bKeys = Object.keys(b.OpenDifficulty).sort();
+    
+    if(aKeys.length != bKeys.length){
+      return false;
+    }
+    
+    for(let i = 0; i < aKeys.length; i++){
+      if(aKeys[i] !== bKeys[i]){
         return false;
-    });
+      }
+    }
   }
   
   return true;
