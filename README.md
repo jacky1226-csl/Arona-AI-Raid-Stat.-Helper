@@ -12,6 +12,8 @@ Tampermonkey 腳本，從 [Arona AI](https://arona.ai/) 收集總力戰/大決�
 
 * [fiseleo](https://github.com/fiseleo) - On suggesting using data from [schaledb.com](https://schaledb.com/) to map student and raid data.
 * [fiseleo](https://github.com/fiseleo) - 建議使用 [schaledb.com](https://schaledb.com/) 來對照學生和總力/大決戰情報
+* [electricgoat](https://github.com/electricgoat/ba-data) - On providing JSON format for student pick-up data.
+* [electricgoat](https://github.com/electricgoat/ba-data) - 提供學生日版 pick-up 資料的 JSON 版本.
 
 ## Target Audience 目標客群
 
