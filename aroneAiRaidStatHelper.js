@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Arona AI Raid Stat. Helper
-// @version      v0.6
+// @version      v0.7
 // @description  Gather student usage in different raids
 // @author       Jacky Ho
 // @match        https://arona.ai/*
@@ -24,7 +24,7 @@ let facts = {
   "enStudentUrl": "https://schaledb.com/data/en/students.json",
   "krRaidInfo": "https://schaledb.com/data/kr/raids.json",
   "krStudentUrl": "https://schaledb.com/data/kr/students.json",
-  "shopRecruitExcelTableUrl": "https://raw.githubusercontent.com/electricgoat/ba-data/refs/heads/jp/Excel/ShopRecruitExcelTable.json"
+  "shopRecruitExcelTableUrl": "https://raw.githubusercontent.com/electricgoat/ba-data/refs/heads/jp/DB/ShopRecruitExcelTable.json"
 }
 
 let debugMode = false;
@@ -212,8 +212,6 @@ window.downloadInfo = async function (configJson) {
       return 1;
     });
     dataArr.unshift(summarySheetHeader);
-    
-    console.log(dataArr);
 
     let sheetName = "";
     if(i === 0) {
